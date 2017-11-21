@@ -75,9 +75,7 @@ func (s *ConnectionsStorage) RemoveConnection(connection *Connection) {
 
 func (s *ConnectionsStorage) removeConnection(connection *Connection) {
 	defer func() {
-		connection.id = -1
-		connection.userId = nil
-		connection.deviceId = nil
+		connection.SetClosed()
 	}()
 
 	connectionId, deviceId, userId := connection.GetInfo()
