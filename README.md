@@ -1,4 +1,4 @@
-# nats-http
+# nats-websocket
 WebSocket gateway for [nats.io](http://nats.io/). Supports login by JWT and json/protobuf message formats.
 
 ## Installation
