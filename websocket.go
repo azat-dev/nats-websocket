@@ -206,13 +206,14 @@ func (w *NatsWebSocket) onBinaryMessage(netConnection *Connection, message []byt
 	busClient.Publish("nats-websocket", packedMessage)
 }
 
-func (w *NatsWebSocket) onClose(netConnection *Connection) {
+func (w *NatsWebSocket) onClose(connection *Connection) {
 
-	if netConnection.id == -1 {
+	connectionId, _, _ := connection.GetInfo()
+	if connectionId == -1 {
 		return
 	}
 
-	w.connections.RemoveConnection(netConnection)
+	w.connections.RemoveConnection(connection)
 }
 
 func (w *NatsWebSocket) login(connection *Connection, tokenString []byte) {
@@ -306,9 +307,9 @@ func (w *NatsWebSocket) Stop() {
 
 	if w.httpServer != nil {
 		w.httpServer.Shutdown(nil)
-		log.Println("http: shutdown")
+		//log.Println("http: shutdown")
 	}
 
 	w.natsPool.Empty()
-	log.Println("natspool: empty")
+	//log.Println("natspool: empty")
 }

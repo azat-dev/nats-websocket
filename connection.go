@@ -90,3 +90,12 @@ func (c *Connection) UpdateLastPingTime() {
 
 	c.lastMessageAt = time.Now()
 }
+
+func (c *Connection) SetClosed() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	c.id = -1
+	c.userId = nil
+	c.deviceId = nil
+}
