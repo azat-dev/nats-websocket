@@ -16,11 +16,11 @@ var dialer = websocket.Dialer{}
 func TestConnections(t *T) {
 
 	natsWebsocket := New(&Config{
-		ListenInterface: "localhost:8090",
+		ListenInterface: "localhost:8080",
 		JwtSecret:       "123456",
 		Timeout:         30000,
 		UrlPattern:      "/",
-		NatsAddress:     "nats://localhost:32770",
+		NatsAddress:     "nats://localhost:4222",
 		NatsPoolSize:    10,
 		PacketFormat:    "json",
 		NumberOfWorkers: 20,
@@ -58,7 +58,7 @@ func startTestConnection(t *T, sendWrongToken bool, wg *sync.WaitGroup) {
 
 	defer wg.Done()
 
-	conn, _, err := dialer.Dial("ws://localhost:8090/", nil)
+	conn, _, err := dialer.Dial("ws://localhost:8080/", nil)
 	assert.Nil(t, err)
 	if err != nil {
 		return
