@@ -1,0 +1,36 @@
+syntax = "proto3";
+package pb;
+
+message InputMessage {
+    enum Type {
+        TEXT = 0;
+        BINARY = 1;
+    }
+
+    Type type = 1;
+    int64 inputTime = 2;
+    string userId = 3;
+    string deviceId = 4;
+    bytes body = 5;
+}
+
+message SendMessage {
+    oneof message_type {
+        SendMessageToAllUserDevices senToAllUserDevices = 1;
+        SendMessageToDevice senToDevice = 2;
+    }
+}
+
+message SendMessageToAllUserDevices {
+    string userId = 1;
+    repeated string exclude = 2;
+}
+
+message SendMessageToDevice {
+    string deviceId = 2;
+}
+
+message Response {
+    int64 status = 1;
+    bytes body = 2;
+}
