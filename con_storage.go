@@ -1,32 +1,33 @@
 package nats_websocket
 
 import (
-	"log"
-	"time"
-)
-
-import (
 	"sync"
 )
 
-const NOT_LOGGED_LIFE_TIME = 5 * time.Second
-const PING_TIMEOUT = 10 * time.Minute
+//const NOT_LOGGED_LIFE_TIME = 5 * time.Second
+//const PING_TIMEOUT = 10 * time.Minute
+
+type ConnectionsStats struct {
+	NumberOfUsers                int
+	NumberOfDevices              int
+	NumberOfNotLoggedConnections int
+}
 
 type ConnectionsStorage struct {
-	mutex                     sync.RWMutex
-	connectionsById           map[int64]*Connection
-	connectionsByUserId       map[string]map[int64]*Connection
-	connectionsByDeviceId     map[string]*Connection // one connection per device
-	numberOfClosedConnections int
+	mutex                        sync.RWMutex
+	connectionsById              map[ConnectionId]*Connection
+	connectionsByUserId          map[UserId]map[DeviceId]*Connection
+	connectionsByDeviceId        map[DeviceId]*Connection // one connection per device
+	numberOfNotLoggedConnections int
 }
 
 func NewConnectionsStorage() *ConnectionsStorage {
 	return &ConnectionsStorage{
-		mutex:                     sync.RWMutex{},
-		connectionsById:           make(map[int64]*Connection),
-		connectionsByUserId:       make(map[string]map[int64]*Connection),
-		connectionsByDeviceId:     make(map[string]*Connection),
-		numberOfClosedConnections: 0,
+		mutex:                        sync.RWMutex{},
+		connectionsById:              make(map[ConnectionId]*Connection),
+		connectionsByUserId:          make(map[UserId]map[DeviceId]*Connection),
+		connectionsByDeviceId:        make(map[DeviceId]*Connection),
+		numberOfNotLoggedConnections: 0,
 	}
 }
 
@@ -34,36 +35,35 @@ func (s *ConnectionsStorage) AddNewConnection(connection *Connection) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
+	s.numberOfNotLoggedConnections++
 	s.connectionsById[connection.id] = connection
 }
 
-func (s *ConnectionsStorage) OnLogin(connection *Connection) {
+func (s *ConnectionsStorage) OnLogin(connection *Connection) *Connection {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	connectionId, deviceId, userId := connection.GetInfo()
-	if userId == nil || *userId == "" {
-		return
+	_, userId, deviceId := connection.GetInfo()
+	if userId == "" {
+		return nil
 	}
 
-	connectionBefore := s.connectionsByDeviceId[*connection.deviceId]
-	if connectionBefore != nil {
-		s.removeConnection(connectionBefore)
-	}
-	s.connectionsByDeviceId[*deviceId] = connection
+	s.numberOfNotLoggedConnections--
 
-	connections := s.connectionsByUserId[*userId]
-	if connections == nil {
-		connections = make(map[int64]*Connection)
-		s.connectionsByUserId[*userId] = connections
+	deviceConnectionBefore := s.connectionsByDeviceId[connection.deviceId]
+	if deviceConnectionBefore != nil {
+		s.removeConnection(deviceConnectionBefore)
 	}
-	connections[connectionId] = connection
+	s.connectionsByDeviceId[deviceId] = connection
 
-	if connections == nil {
-		connections = make(map[int64]*Connection)
-
+	userConnections := s.connectionsByUserId[userId]
+	if userConnections == nil {
+		userConnections = make(map[DeviceId]*Connection)
+		s.connectionsByUserId[userId] = userConnections
 	}
-	connections[connectionId] = connection
+	userConnections[deviceId] = connection
+
+	return deviceConnectionBefore
 }
 
 func (s *ConnectionsStorage) RemoveConnection(connection *Connection) {
@@ -74,90 +74,63 @@ func (s *ConnectionsStorage) RemoveConnection(connection *Connection) {
 }
 
 func (s *ConnectionsStorage) removeConnection(connection *Connection) {
-	defer func() {
-		connection.SetClosed()
-	}()
 
-	connectionId, deviceId, userId := connection.GetInfo()
+	connectionId, userId, deviceId := connection.GetInfo()
 
-	delete(s.connectionsById, connectionId)
-
-	if userId == nil {
+	connectionBefore := s.connectionsById[connectionId]
+	if connectionBefore == nil {
 		return
 	}
 
-	userChannels := s.connectionsByUserId[*userId]
-	if userChannels != nil {
-		delete(userChannels, connectionId)
-		if len(userChannels) == 0 {
-			delete(s.connectionsByUserId, *userId)
+	delete(s.connectionsById, connectionId)
+
+	if userId == "" {
+		s.numberOfNotLoggedConnections--
+		return
+	}
+
+	userConnections := s.connectionsByUserId[userId]
+	if userConnections != nil {
+		delete(userConnections, deviceId)
+		if len(userConnections) == 0 {
+			delete(s.connectionsByUserId, userId)
 		}
 	}
 
-	connectionBefore := s.connectionsByDeviceId[*deviceId]
-	if connectionBefore != nil {
-		delete(s.connectionsByDeviceId, *deviceId)
+	deviceConnection := s.connectionsByDeviceId[deviceId]
+	if deviceConnection != nil {
+		delete(s.connectionsByDeviceId, deviceId)
 	}
-
-	s.numberOfClosedConnections++
 }
 
-func (s *ConnectionsStorage) GetUserConnections(userId string) map[int64]*Connection {
+func (s *ConnectionsStorage) GetUserConnections(userId UserId) map[DeviceId]*Connection {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
 	return s.connectionsByUserId[userId]
 }
 
-func (s *ConnectionsStorage) GetDeviceConnection(deviceId string) *Connection {
+func (s *ConnectionsStorage) GetDeviceConnection(deviceId DeviceId) *Connection {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
 	return s.connectionsByDeviceId[deviceId]
 }
 
-func (s *ConnectionsStorage) GetConnectionById(connectionId int64) *Connection {
+func (s *ConnectionsStorage) GetConnectionById(connectionId ConnectionId) *Connection {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
 	return s.connectionsById[connectionId]
 }
 
-func (s *ConnectionsStorage) cleanConnections() {
+func (s *ConnectionsStorage) GetStats() ConnectionsStats {
+	s.mutex.RLock()
+	s.mutex.RUnlock()
 
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	log.Println("Start clean")
-
-	for _, connection := range s.connectionsById {
-
-		if connection.userId == nil && (time.Since(connection.startTime) > NOT_LOGGED_LIFE_TIME) {
-
-			log.Println("Delete connection ", connection.id)
-			connection.Close("NotLoggedIn")
-			//TODO: is it call onClose?
-			s.removeConnection(connection)
-
-		} else if time.Since(connection.lastMessageAt) > PING_TIMEOUT {
-
-			connection.Close("PingTimeout")
-			s.removeConnection(connection)
-		}
-	}
-}
-
-func (s *ConnectionsStorage) startCleanNotLoggedChannels(stopSignal chan bool) {
-
-	ticker := time.NewTicker(PING_TIMEOUT)
-
-	for {
-		select {
-		case <-ticker.C:
-			s.cleanConnections()
-		case <-stopSignal:
-			ticker.Stop()
-			return
-		}
+	return ConnectionsStats{
+		NumberOfDevices:              len(s.connectionsByDeviceId),
+		NumberOfUsers:                len(s.connectionsByUserId),
+		NumberOfNotLoggedConnections: s.numberOfNotLoggedConnections,
 	}
 }

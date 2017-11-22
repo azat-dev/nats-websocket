@@ -31,7 +31,7 @@ const (
 	LOGIN_PREFIX = "login>:"
 )
 
-type PackMessageFunc func(packetFormat string, messageType MessageType, userId *string, deviceId *string, data []byte) []byte
+type PackMessageFunc func(packetFormat string, messageType MessageType, userId UserId, deviceId DeviceId, data []byte) []byte
 
 type NatsWebSocket struct {
 	config   *Config
@@ -65,7 +65,7 @@ func NewCustom(config *Config, packMessageHook PackMessageFunc) *NatsWebSocket {
 	}
 }
 
-func DefaultPackMessage(packetFormat string, messageType MessageType, userId *string, deviceId *string, data []byte) []byte {
+func DefaultPackMessage(packetFormat string, messageType MessageType, userId UserId, deviceId DeviceId, data []byte) []byte {
 
 	switch packetFormat {
 	case "protobuf":
@@ -81,8 +81,8 @@ func DefaultPackMessage(packetFormat string, messageType MessageType, userId *st
 		inputMessage := pb.InputMessage{
 			Type:      pbMsgType,
 			InputTime: time.Now().UnixNano() / 1000000,
-			UserId:    *userId,
-			DeviceId:  *deviceId,
+			UserId:    string(userId),
+			DeviceId:  string(deviceId),
 			Body:      data,
 		}
 
@@ -102,8 +102,8 @@ func DefaultPackMessage(packetFormat string, messageType MessageType, userId *st
 		inputMessage := js.InputMessage{
 			Type:      jsMsgType,
 			InputTime: time.Now().UnixNano() / 1000000,
-			UserId:    *userId,
-			DeviceId:  *deviceId,
+			UserId:    string(userId),
+			DeviceId:  string(deviceId),
 			Body:      data,
 		}
 
@@ -115,6 +115,10 @@ func DefaultPackMessage(packetFormat string, messageType MessageType, userId *st
 	return nil
 }
 
+func (w *NatsWebSocket) getNewConnectionId() ConnectionId {
+	return ConnectionId(atomic.AddInt64(&w.lastConnectionNumber, 1))
+}
+
 func (w *NatsWebSocket) onConnection(writer http.ResponseWriter, request *http.Request) {
 
 	connection, err := w.upgrader.Upgrade(writer, request, nil)
@@ -123,19 +127,18 @@ func (w *NatsWebSocket) onConnection(writer http.ResponseWriter, request *http.R
 	}
 
 	connection.SetReadLimit(1000)
-	netConnId := atomic.AddInt64(&w.lastConnectionNumber, 1)
 	desc := netpoll.Must(netpoll.HandleRead(connection.UnderlyingConn()))
-	netConnection := NewConnection(netConnId, connection, desc)
 
-	w.connections.AddNewConnection(netConnection)
+	wsConnection := NewConnection(w.getNewConnectionId(), connection, desc)
+	w.connections.AddNewConnection(wsConnection)
 
 	connection.SetCloseHandler(func(code int, text string) error {
-		w.onClose(netConnection)
+		w.onClose(wsConnection)
 		return nil
 	})
 
 	w.poller.Start(desc, func(event netpoll.Event) {
-		w.inputWorkersPool.Schedule(func() { w.onMessage(netConnection) })
+		w.inputWorkersPool.Schedule(func() { w.onMessage(wsConnection) })
 	})
 }
 
@@ -162,24 +165,24 @@ func (w *NatsWebSocket) onMessage(netConnection *Connection) {
 	}
 }
 
-func (w *NatsWebSocket) onTextMessage(netConnection *Connection, message []byte) {
+func (w *NatsWebSocket) onTextMessage(connection *Connection, message []byte) {
 
 	isLoginMessage := bytes.HasPrefix(message, []byte(LOGIN_PREFIX))
 	if isLoginMessage {
-		w.login(netConnection, message[len(LOGIN_PREFIX):])
+		w.login(connection, message[len(LOGIN_PREFIX):])
 		return
 	}
 
-	if !netConnection.IsLoggedIn() {
+	if !connection.IsLoggedIn() {
 		return
 	}
 
 	if bytes.Compare(message, []byte("ping")) == 0 {
-		netConnection.Send([]byte("pong"))
+		connection.Send([]byte("pong"))
 		return
 	}
 
-	_, deviceId, userId := netConnection.GetInfo()
+	_, userId, deviceId := connection.GetInfo()
 
 	busClient, err := w.natsPool.Get()
 	if err != nil {
@@ -195,7 +198,7 @@ func (w *NatsWebSocket) onBinaryMessage(netConnection *Connection, message []byt
 	if !netConnection.IsLoggedIn() {
 		return
 	}
-	_, deviceId, userId := netConnection.GetInfo()
+	_, userId, deviceId := netConnection.GetInfo()
 
 	busClient, err := w.natsPool.Get()
 	if err != nil {
@@ -231,14 +234,14 @@ func (w *NatsWebSocket) login(connection *Connection, tokenString []byte) {
 	}
 
 	claims := newToken.Claims()
-	userId := claims.Get("userId").(string)
-	deviceId := claims.Get("deviceId").(string)
+	userId := UserId(claims.Get("userId").(string))
+	deviceId := DeviceId(claims.Get("deviceId").(string))
 
-	_, conDeviceId, conUserId := connection.GetInfo()
+	_, conUserId, conDeviceId := connection.GetInfo()
 
-	if conUserId != nil {
+	if conUserId != "" {
 
-		if *conUserId != userId || *conDeviceId != deviceId {
+		if conUserId != userId || conDeviceId != deviceId {
 			connection.Send([]byte(LOGIN_PREFIX + "error"))
 			return
 		}
@@ -247,7 +250,7 @@ func (w *NatsWebSocket) login(connection *Connection, tokenString []byte) {
 		return
 	}
 
-	connection.Login(&userId, &deviceId)
+	connection.Login(userId, deviceId)
 	w.connections.OnLogin(connection)
 
 	connection.Send([]byte(LOGIN_PREFIX + "ok"))
@@ -307,9 +310,9 @@ func (w *NatsWebSocket) Stop() {
 
 	if w.httpServer != nil {
 		w.httpServer.Shutdown(nil)
-		//log.Println("http: shutdown")
+		log.Println("http: shutdown")
 	}
 
 	w.natsPool.Empty()
-	//log.Println("natspool: empty")
+	log.Println("natspool: empty")
 }
