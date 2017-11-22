@@ -50,12 +50,16 @@ func (c *Connection) Send(message []byte) {
 	c.ws.WriteMessage(websocket.TextMessage, message)
 }
 
-func (c *Connection) Close(reason string) {
+func (c *Connection) Close(code int, reason string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	c.ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, reason))
 	c.ws.Close()
+
+	c.id = -1
+	c.userId = ""
+	c.deviceId = ""
 }
 
 func (c *Connection) IsLoggedIn() bool {
@@ -93,13 +97,4 @@ func (c *Connection) UpdateLastPingTime() {
 	defer c.mutex.Unlock()
 
 	c.lastMessageAt = time.Now()
-}
-
-func (c *Connection) SetClosed() {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	c.id = -1
-	c.userId = ""
-	c.deviceId = ""
 }

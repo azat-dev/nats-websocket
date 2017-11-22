@@ -119,14 +119,8 @@ func (w *NatsWebSocket) getNewConnectionId() ConnectionId {
 	return ConnectionId(atomic.AddInt64(&w.lastConnectionNumber, 1))
 }
 
-func (w *NatsWebSocket) onConnection(writer http.ResponseWriter, request *http.Request) {
+func (w *NatsWebSocket) registerConnectionInNetPoll(connection *websocket.Conn) {
 
-	connection, err := w.upgrader.Upgrade(writer, request, nil)
-	if err != nil {
-		return
-	}
-
-	connection.SetReadLimit(1000)
 	desc := netpoll.Must(netpoll.HandleRead(connection.UnderlyingConn()))
 
 	wsConnection := NewConnection(w.getNewConnectionId(), connection, desc)
@@ -142,12 +136,27 @@ func (w *NatsWebSocket) onConnection(writer http.ResponseWriter, request *http.R
 	})
 }
 
+func (w *NatsWebSocket) unregisterConnectionFromNetPoll(connection *Connection) {
+	w.poller.Stop(connection.desc)
+}
+
+func (w *NatsWebSocket) onConnection(writer http.ResponseWriter, request *http.Request) {
+
+	connection, err := w.upgrader.Upgrade(writer, request, nil)
+	if err != nil {
+		return
+	}
+
+	connection.SetReadLimit(1000)
+	w.registerConnectionInNetPoll(connection)
+}
+
 func (w *NatsWebSocket) onMessage(netConnection *Connection) {
 
 	messageType, message, err := netConnection.ReadMessage()
 	if err != nil {
 		w.poller.Stop(netConnection.desc)
-		netConnection.Close("")
+		netConnection.Close(websocket.CloseInternalServerErr, "ServerError")
 		w.onClose(netConnection)
 		return
 	}
@@ -216,6 +225,7 @@ func (w *NatsWebSocket) onClose(connection *Connection) {
 		return
 	}
 
+	w.unregisterConnectionFromNetPoll(connection)
 	w.connections.RemoveConnection(connection)
 }
 
@@ -251,7 +261,12 @@ func (w *NatsWebSocket) login(connection *Connection, tokenString []byte) {
 	}
 
 	connection.Login(userId, deviceId)
-	w.connections.OnLogin(connection)
+
+	deviceConnectionBefore := w.connections.OnLogin(connection)
+	if deviceConnectionBefore != nil {
+		w.unregisterConnectionFromNetPoll(deviceConnectionBefore)
+		deviceConnectionBefore.Close(websocket.CloseGoingAway, "OneConnectionPerDevice")
+	}
 
 	connection.Send([]byte(LOGIN_PREFIX + "ok"))
 }
