@@ -1,5 +1,6 @@
 # nats-websocket
 WebSocket gateway for [nats.io](http://nats.io/). Supports login by JWT and json/protobuf message formats.
+Nats-websocket uses epoll/kpoll for reduce amount of memory per connection.
 
 ## Installation
 
