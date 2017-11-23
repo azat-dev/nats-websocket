@@ -134,3 +134,34 @@ func (s *ConnectionsStorage) GetStats() ConnectionsStats {
 		NumberOfNotLoggedConnections: s.numberOfNotLoggedConnections,
 	}
 }
+
+func (s *ConnectionsStorage) RemoveIf(condition func(con *Connection) bool, afterRemove func(con *Connection)) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for id, connection := range s.connectionsById {
+		if condition(connection) {
+
+			_, userId, deviceId := connection.GetInfo()
+
+			delete(s.connectionsById, id)
+
+			if deviceId != "" {
+				delete(s.connectionsByDeviceId, deviceId)
+			}
+
+			if userId != "" {
+				userConnections := s.connectionsByUserId[userId]
+				if userConnections != nil {
+					if len(userConnections) == 1 {
+						delete(s.connectionsByUserId, userId)
+					} else {
+						delete(userConnections, deviceId)
+					}
+				}
+			}
+
+			afterRemove(connection)
+		}
+	}
+}

@@ -120,7 +120,7 @@ func (w *NatsWebSocket) getNewConnectionId() ConnectionId {
 	return ConnectionId(atomic.AddInt64(&w.lastConnectionNumber, 1))
 }
 
-func (w *NatsWebSocket) registerConnectionInNetPoll(connection *websocket.Conn) {
+func (w *NatsWebSocket) registerConnectionInNetPoll(connection *websocket.Conn) *Connection {
 
 	desc := netpoll.Must(netpoll.HandleRead(connection.UnderlyingConn()))
 
@@ -135,6 +135,8 @@ func (w *NatsWebSocket) registerConnectionInNetPoll(connection *websocket.Conn) 
 	w.poller.Start(desc, func(event netpoll.Event) {
 		w.inputWorkersPool.Schedule(func() { w.onMessage(wsConnection) })
 	})
+
+	return wsConnection
 }
 
 func (w *NatsWebSocket) unregisterConnectionFromNetPoll(connection *Connection) {
@@ -149,7 +151,27 @@ func (w *NatsWebSocket) onConnection(writer http.ResponseWriter, request *http.R
 	}
 
 	connection.SetReadLimit(1000)
-	w.registerConnectionInNetPoll(connection)
+	con := w.registerConnectionInNetPoll(connection)
+	w.cleanConnectionsIfNeed(con)
+}
+
+func (w *NatsWebSocket) cleanConnectionsIfNeed(netConnection *Connection) {
+
+	now := time.Now().Unix()
+	stats := w.connections.GetStats()
+
+	if stats.NumberOfNotLoggedConnections > 200 {
+		w.connections.RemoveIf(func(con *Connection) bool {
+
+			return now-con.startTime.Unix() > 60
+
+		}, func(con *Connection) {
+
+			w.unregisterConnectionFromNetPoll(con)
+			con.Close(websocket.ClosePolicyViolation, "Auth")
+
+		})
+	}
 }
 
 func (w *NatsWebSocket) onMessage(netConnection *Connection) {
@@ -265,8 +287,8 @@ func (w *NatsWebSocket) login(connection *Connection, tokenString []byte) {
 
 	deviceConnectionBefore := w.connections.OnLogin(connection)
 	if deviceConnectionBefore != nil {
-		w.unregisterConnectionFromNetPoll(deviceConnectionBefore)
 		deviceConnectionBefore.Close(websocket.CloseGoingAway, "OneConnectionPerDevice")
+		w.unregisterConnectionFromNetPoll(deviceConnectionBefore)
 	}
 
 	connection.SendText([]byte(LOGIN_PREFIX + "ok"))
