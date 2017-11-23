@@ -8,6 +8,8 @@ type Config struct {
 	JwtSecret       string `json:"jwtSecret"`
 	NumberOfWorkers int    `json:"numberOfWorkers"`
 
-	NatsAddress  string `json:"natsAddress"`
-	NatsPoolSize int    `json:"natsPoolSize"`
+	NatsAddress       string `json:"natsAddress"`
+	NatsPoolSize      int    `json:"natsPoolSize"`
+	NatsListenSubject string `json:"natsListenSubject"`
+	NatsOutputSubject string `json:"natsOutputSubject"`
 }

@@ -7,14 +7,16 @@ import (
 func main() {
 
 	server := nats_websocket.New(&nats_websocket.Config{
-		NatsPoolSize:    10,
-		NatsAddress:     "nats://localhost:32770",
-		UrlPattern:      "/",
-		ListenInterface: "localhost:8080",
-		PacketFormat:    "json",
-		Timeout:         30000,
-		JwtSecret:       "123456",
-		NumberOfWorkers: 200,
+		NatsPoolSize:      10,
+		NatsAddress:       "nats://localhost:32770",
+		UrlPattern:        "/",
+		ListenInterface:   "localhost:8080",
+		PacketFormat:      "json",
+		Timeout:           30000,
+		JwtSecret:         "123456",
+		NumberOfWorkers:   200,
+		NatsListenSubject: "nats-websocket-send",
+		NatsOutputSubject: "nats-websocket-received",
 	})
 
 	server.Start()

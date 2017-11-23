@@ -1,36 +1,44 @@
 syntax = "proto3";
 package pb;
 
-message InputMessage {
-    enum Type {
-        TEXT = 0;
-        BINARY = 1;
-    }
+enum MessageType {
+    TEXT = 0;
+    BINARY = 1;
+}
 
-    Type type = 1;
+message InputMessage {
+
+    MessageType type = 1;
     int64 inputTime = 2;
     string userId = 3;
     string deviceId = 4;
     bytes body = 5;
 }
 
-message SendMessage {
-    oneof message_type {
-        SendMessageToAllUserDevices senToAllUserDevices = 1;
-        SendMessageToDevice senToDevice = 2;
+message Command {
+    enum Method {
+        SEND_MESSAGE_TO_ALL_USER_DEVICES = 0;
+        SEND_MESSAGE_TO_DEVICE = 1;
+    }
+
+    Method method = 1;
+    oneof params {
+        SendMessageToAllUserDevicesParams sendToAllUserDevices = 2;
+        SendMessageToDeviceParams sendToDevice = 3;
     }
 }
 
-message SendMessageToAllUserDevices {
-    string userId = 1;
-    repeated string exclude = 2;
-}
+message SendMessageToDeviceParams {
 
-message SendMessageToDevice {
+    MessageType messageType = 1;
     string deviceId = 2;
+    bytes message = 3;
 }
 
-message Response {
-    int64 status = 1;
-    bytes body = 2;
+message SendMessageToAllUserDevicesParams {
+
+    MessageType messageType = 1;
+    string userId = 2;
+    string excludeDevice = 3;
+    bytes message = 4;
 }

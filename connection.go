@@ -43,11 +43,18 @@ func (c *Connection) ReadMessage() (messageType int, p []byte, err error) {
 	return c.ws.ReadMessage()
 }
 
-func (c *Connection) Send(message []byte) {
+func (c *Connection) SendText(message []byte) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	c.ws.WriteMessage(websocket.TextMessage, message)
+}
+
+func (c *Connection) SendBinary(message []byte) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	c.ws.WriteMessage(websocket.BinaryMessage, message)
 }
 
 func (c *Connection) Close(code int, reason string) {

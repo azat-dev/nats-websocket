@@ -11,6 +11,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
 	"github.com/mailru/easygo/netpoll"
+	"github.com/nats-io/go-nats"
 	"log"
 	"net/http"
 	"os"
@@ -69,13 +70,13 @@ func DefaultPackMessage(packetFormat string, messageType MessageType, userId Use
 
 	switch packetFormat {
 	case "protobuf":
-		var pbMsgType pb.InputMessage_Type
+		var pbMsgType pb.MessageType
 
 		switch messageType {
 		case TEXT:
-			pbMsgType = pb.InputMessage_TEXT
+			pbMsgType = pb.MessageType_TEXT
 		case BINARY:
-			pbMsgType = pb.InputMessage_BINARY
+			pbMsgType = pb.MessageType_BINARY
 		}
 
 		inputMessage := pb.InputMessage{
@@ -90,7 +91,7 @@ func DefaultPackMessage(packetFormat string, messageType MessageType, userId Use
 		return inputMessageBytes
 
 	case "json":
-		var jsMsgType js.InputMessageType
+		var jsMsgType js.MessageType
 
 		switch messageType {
 		case TEXT:
@@ -187,7 +188,7 @@ func (w *NatsWebSocket) onTextMessage(connection *Connection, message []byte) {
 	}
 
 	if bytes.Compare(message, []byte("ping")) == 0 {
-		connection.Send([]byte("pong"))
+		connection.SendText([]byte("pong"))
 		return
 	}
 
@@ -199,7 +200,7 @@ func (w *NatsWebSocket) onTextMessage(connection *Connection, message []byte) {
 	}
 
 	packedMessage := w.packMessage(w.config.PacketFormat, TEXT, userId, deviceId, message)
-	busClient.Publish("nats-websocket", packedMessage)
+	busClient.Publish(w.config.NatsOutputSubject, packedMessage)
 }
 
 func (w *NatsWebSocket) onBinaryMessage(netConnection *Connection, message []byte) {
@@ -215,7 +216,7 @@ func (w *NatsWebSocket) onBinaryMessage(netConnection *Connection, message []byt
 	}
 
 	packedMessage := w.packMessage(w.config.PacketFormat, BINARY, userId, deviceId, message)
-	busClient.Publish("nats-websocket", packedMessage)
+	busClient.Publish(w.config.NatsOutputSubject, packedMessage)
 }
 
 func (w *NatsWebSocket) onClose(connection *Connection) {
@@ -233,13 +234,13 @@ func (w *NatsWebSocket) login(connection *Connection, tokenString []byte) {
 
 	newToken, err := jws.ParseJWT([]byte(tokenString))
 	if err != nil {
-		connection.Send([]byte(LOGIN_PREFIX + "error"))
+		connection.SendText([]byte(LOGIN_PREFIX + "error"))
 		return
 	}
 
 	err = newToken.Validate([]byte(w.config.JwtSecret), crypto.SigningMethodHS256)
 	if err != nil {
-		connection.Send([]byte(LOGIN_PREFIX + "error"))
+		connection.SendText([]byte(LOGIN_PREFIX + "error"))
 		return
 	}
 
@@ -252,11 +253,11 @@ func (w *NatsWebSocket) login(connection *Connection, tokenString []byte) {
 	if conUserId != "" {
 
 		if conUserId != userId || conDeviceId != deviceId {
-			connection.Send([]byte(LOGIN_PREFIX + "error"))
+			connection.SendText([]byte(LOGIN_PREFIX + "error"))
 			return
 		}
 
-		connection.Send([]byte(LOGIN_PREFIX + "ok"))
+		connection.SendText([]byte(LOGIN_PREFIX + "ok"))
 		return
 	}
 
@@ -268,21 +269,159 @@ func (w *NatsWebSocket) login(connection *Connection, tokenString []byte) {
 		deviceConnectionBefore.Close(websocket.CloseGoingAway, "OneConnectionPerDevice")
 	}
 
-	connection.Send([]byte(LOGIN_PREFIX + "ok"))
+	connection.SendText([]byte(LOGIN_PREFIX + "ok"))
+}
+
+func (w *NatsWebSocket) startListenPacketsFromBus() {
+
+	busClient, err := w.natsPool.Get()
+	if err != nil {
+		log.Fatalf("Can't connect to nats: %v", err)
+		return
+	}
+
+	_, err = busClient.Subscribe(w.config.NatsListenSubject, func(msg *nats.Msg) {
+		w.handleOutputMsg(msg)
+	})
+
+	if err != nil {
+		log.Fatalf("Can't connect to nats: %v", err)
+		return
+	}
+}
+
+func (w *NatsWebSocket) handleOutputMsg(msg *nats.Msg) {
+
+	switch w.config.PacketFormat {
+	case "protobuf":
+		var command pb.Command
+
+		err := proto.Unmarshal(msg.Data, &command)
+		if err != nil {
+			return
+		}
+
+		if command.Method == pb.Command_SEND_MESSAGE_TO_DEVICE {
+
+			params := command.GetSendToDevice()
+			deviceId := DeviceId(params.DeviceId)
+
+			messageType := TEXT
+			if params.MessageType == pb.MessageType_BINARY {
+				messageType = BINARY
+			}
+
+			w.sendMessageToDevice(deviceId, messageType, params.Message)
+
+		} else {
+
+			params := command.GetSendToAllUserDevices()
+			userId := UserId(params.UserId)
+			excludeDevice := DeviceId(params.ExcludeDevice)
+
+			messageType := TEXT
+			if params.MessageType == pb.MessageType_BINARY {
+				messageType = BINARY
+			}
+
+			w.sendMessageToAllUserDevices(userId, excludeDevice, messageType, params.Message)
+		}
+
+	case "json":
+		var command js.Command
+
+		err := json.Unmarshal(msg.Data, &command)
+		if err != nil {
+			return
+		}
+
+		if command.Method == js.SEND_MESSAGE_TO_DEVICE {
+
+			var params js.SendMessageToDeviceParams
+			err := json.Unmarshal(command.Params, &params)
+			if err != nil {
+				return
+			}
+
+			deviceId := DeviceId(params.DeviceId)
+
+			messageType := TEXT
+			if params.MessageType == js.BINARY {
+				messageType = BINARY
+			}
+
+			w.sendMessageToDevice(deviceId, messageType, params.Message)
+
+		} else {
+
+			var params js.SendMessageToAllUserDevicesParams
+			err := json.Unmarshal(command.Params, &params)
+			if err != nil {
+				return
+			}
+
+			userId := UserId(params.UserId)
+			excludeDevice := DeviceId(params.ExcludeDevice)
+
+			messageType := TEXT
+			if params.MessageType == js.BINARY {
+				messageType = BINARY
+			}
+
+			w.sendMessageToAllUserDevices(userId, excludeDevice, messageType, params.Message)
+		}
+	}
+}
+
+func (w *NatsWebSocket) sendMessageToDevice(deviceId DeviceId, messageType MessageType, message []byte) {
+
+	connection := w.connections.GetDeviceConnection(deviceId)
+	if connection == nil {
+		return
+	}
+
+	switch messageType {
+	case TEXT:
+		connection.SendText(message)
+	case BINARY:
+		connection.SendBinary(message)
+	}
+}
+
+func (w *NatsWebSocket) sendMessageToAllUserDevices(userId UserId, excludeDevice DeviceId, messageType MessageType, message []byte) {
+
+	userConnections := w.connections.GetUserConnections(userId)
+	if userConnections == nil {
+		return
+	}
+
+	for deviceId, connection := range userConnections {
+		if deviceId == excludeDevice {
+			continue
+		}
+
+		switch messageType {
+		case TEXT:
+			connection.SendText(message)
+		case BINARY:
+			connection.SendBinary(message)
+		}
+	}
 }
 
 func (w *NatsWebSocket) startHttpServer() {
 
-	http.HandleFunc(w.config.UrlPattern, w.onConnection)
-
+	mux := http.NewServeMux()
+	mux.HandleFunc(w.config.UrlPattern, w.onConnection)
 	srv := http.Server{
-		Addr: w.config.ListenInterface,
+		Addr:    w.config.ListenInterface,
+		Handler: mux,
 	}
 
 	w.httpServer = &srv
 
 	log.Println("Start nats-http on: " + w.config.ListenInterface)
-	log.Fatal(srv.ListenAndServe())
+	srv.ListenAndServe()
 }
 
 func getOsSignalWatcher() chan os.Signal {
@@ -312,6 +451,8 @@ func (w *NatsWebSocket) Start() {
 
 	w.natsPool = natsPool
 	defer func() { natsPool.Empty() }()
+
+	go w.startListenPacketsFromBus()
 
 	go func() {
 		<-stopSignal
