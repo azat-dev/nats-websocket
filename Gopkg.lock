@@ -9,9 +9,9 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/akaumov/natspool"
+  name = "github.com/akaumov/nats-pool"
   packages = ["."]
-  revision = "39ed54ddc7277ccd4dce621cf70101d6d710c8c8"
+  revision = "e18ccdd477132e2f21c6148b60935f722acd5072"
 
 [[projects]]
   name = "github.com/davecgh/go-spew"
@@ -56,6 +56,12 @@
   version = "v1.0.0"
 
 [[projects]]
+  name = "github.com/satori/go.uuid"
+  packages = ["."]
+  revision = "879c5887cd475cd7864858769793b2ceb0d44feb"
+  version = "v1.1.0"
+
+[[projects]]
   name = "github.com/stretchr/testify"
   packages = ["assert"]
   revision = "69483b4bd14f5845b5a1e55bca19e954e827f1d0"
@@ -70,6 +76,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "6615002c9df09e4fa2575bf5c2eb904ed3d7f62eae39c35e3bbf4262cf4bbe69"
+  inputs-digest = "cee82593f2f8de9f95af18fe0d8a9e1724c2a5ef39e9df3d85824596fb66cf79"
   solver-name = "gps-cdcl"
   solver-version = 1

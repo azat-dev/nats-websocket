@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"github.com/SermoDigital/jose/crypto"
 	"github.com/SermoDigital/jose/jws"
+	"github.com/akaumov/nats-pool"
 	"github.com/akaumov/nats-websocket/js"
 	"github.com/akaumov/nats-websocket/pb"
-	"github.com/akaumov/natspool"
 	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
 	"github.com/mailru/easygo/netpoll"
@@ -36,7 +36,7 @@ type PackMessageFunc func(packetFormat string, messageType MessageType, userId U
 
 type NatsWebSocket struct {
 	config   *Config
-	natsPool *natspool.Pool
+	natsPool *nats_pool.Pool
 
 	httpServer           *http.Server
 	upgrader             websocket.Upgrader
@@ -466,7 +466,7 @@ func (w *NatsWebSocket) Start() {
 
 	w.poller = poller
 
-	natsPool, err := natspool.New(w.config.NatsAddress, w.config.NatsPoolSize)
+	natsPool, err := nats_pool.New(w.config.NatsAddress, w.config.NatsPoolSize)
 	if err != nil {
 		log.Panicf("can't connect to nats: %v", err)
 	}
@@ -492,5 +492,5 @@ func (w *NatsWebSocket) Stop() {
 	}
 
 	w.natsPool.Empty()
-	log.Println("natspool: empty")
+	log.Println("nats-pool: empty")
 }

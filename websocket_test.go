@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"github.com/SermoDigital/jose/crypto"
 	"github.com/SermoDigital/jose/jws"
+	"github.com/akaumov/nats-pool"
 	"github.com/akaumov/nats-websocket/js"
 	"github.com/akaumov/nats-websocket/pb"
-	"github.com/akaumov/natspool"
 	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
 	"github.com/nats-io/go-nats"
@@ -23,8 +23,8 @@ const (
 	JWT_SECRET          = "123456"
 	NATS_ADDRESS        = "nats://localhost:4222"
 	NATS_POOL_SIZE      = 200
-	NATS_OUTPUT_SUBJECT = "nats-websocket-received2"
-	NATS_LISTEN_SUBJECT = "nats-websocket-send3"
+	NATS_OUTPUT_SUBJECT = "nats-websocket-received"
+	NATS_LISTEN_SUBJECT = "nats-websocket-send"
 )
 
 var dialer = websocket.Dialer{}
@@ -146,7 +146,7 @@ func testReceiveMessages(t *T, packetFormat string) {
 
 	const NUMBER_OF_CONNECTIONS = 10
 
-	natsPool, err := natspool.New(NATS_ADDRESS, 2)
+	natsPool, err := nats_pool.New(NATS_ADDRESS, 2)
 	assert.Nil(t, err)
 
 	subscribeClient, err := natsPool.Get()
