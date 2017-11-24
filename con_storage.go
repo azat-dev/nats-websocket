@@ -126,13 +126,15 @@ func (s *ConnectionsStorage) GetConnectionById(connectionId ConnectionId) *Conne
 
 func (s *ConnectionsStorage) GetStats() ConnectionsStats {
 	s.mutex.RLock()
-	s.mutex.RUnlock()
+	defer s.mutex.RUnlock()
 
-	return ConnectionsStats{
+	stats := ConnectionsStats{
 		NumberOfDevices:              len(s.connectionsByDeviceId),
 		NumberOfUsers:                len(s.connectionsByUserId),
 		NumberOfNotLoggedConnections: s.numberOfNotLoggedConnections,
 	}
+
+	return stats
 }
 
 func (s *ConnectionsStorage) RemoveIf(condition func(con *Connection) bool, afterRemove func(con *Connection)) {

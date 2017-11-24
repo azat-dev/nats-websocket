@@ -90,6 +90,13 @@ func (c *Connection) GetInfo() (ConnectionId, UserId, DeviceId) {
 	return c.id, c.userId, c.deviceId
 }
 
+func (c *Connection) GetStartTime() time.Time {
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
+
+	return c.startTime
+}
+
 func (c *Connection) Login(userId UserId, deviceId DeviceId) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()

@@ -163,7 +163,7 @@ func (w *NatsWebSocket) cleanConnectionsIfNeed(netConnection *Connection) {
 	if stats.NumberOfNotLoggedConnections > 200 {
 		w.connections.RemoveIf(func(con *Connection) bool {
 
-			return now-con.startTime.Unix() > 60
+			return now-con.GetStartTime().Unix() > 60
 
 		}, func(con *Connection) {
 
