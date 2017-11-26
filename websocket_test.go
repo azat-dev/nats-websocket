@@ -21,7 +21,7 @@ import (
 const (
 	LISTEN_INTERFACE    = "localhost:8080"
 	JWT_SECRET          = "123456"
-	NATS_ADDRESS        = "nats://localhost:32770"
+	NATS_ADDRESS        = "nats://localhost:4222"
 	NATS_POOL_SIZE      = 200
 	NATS_OUTPUT_SUBJECT = "nats-websocket-received"
 	NATS_LISTEN_SUBJECT = "nats-websocket-send"

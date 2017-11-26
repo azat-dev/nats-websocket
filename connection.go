@@ -18,45 +18,46 @@ type Connection struct {
 	deviceId      DeviceId
 	startTime     time.Time
 	lastMessageAt time.Time
-	mutex         sync.RWMutex
+	dataMutex     sync.RWMutex
+	writeMutex    sync.Mutex
 }
 
 func NewConnection(id ConnectionId, ws *websocket.Conn) *Connection {
 	c := &Connection{
-		ws:        ws,
-		id:        id,
-		userId:    "",
-		deviceId:  "",
-		startTime: time.Now(),
-		mutex:     sync.RWMutex{},
+		ws:         ws,
+		id:         id,
+		userId:     "",
+		deviceId:   "",
+		startTime:  time.Now(),
+		dataMutex:  sync.RWMutex{},
+		writeMutex: sync.Mutex{},
 	}
 	return c
 }
 
 func (c *Connection) ReadMessage() (messageType int, p []byte, err error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
 	return c.ws.ReadMessage()
 }
 
 func (c *Connection) SendText(message []byte) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.writeMutex.Lock()
+	defer c.writeMutex.Unlock()
 
 	c.ws.WriteMessage(websocket.TextMessage, message)
 }
 
 func (c *Connection) SendBinary(message []byte) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.writeMutex.Lock()
+	defer c.writeMutex.Unlock()
 
 	c.ws.WriteMessage(websocket.BinaryMessage, message)
 }
 
 func (c *Connection) Close(code int, reason string) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.dataMutex.Lock()
+	c.dataMutex.Unlock()
+	c.writeMutex.Lock()
+	defer c.writeMutex.Unlock()
 
 	c.ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, reason))
 	c.ws.Close()
@@ -67,36 +68,36 @@ func (c *Connection) Close(code int, reason string) {
 }
 
 func (c *Connection) IsLoggedIn() bool {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.dataMutex.RLock()
+	defer c.dataMutex.RUnlock()
 
 	return c.userId != ""
 }
 
 func (c *Connection) IsClosed() bool {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.dataMutex.RLock()
+	defer c.dataMutex.RUnlock()
 
 	return c.IsClosed()
 }
 
 func (c *Connection) GetInfo() (ConnectionId, UserId, DeviceId) {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.dataMutex.RLock()
+	defer c.dataMutex.RUnlock()
 
 	return c.id, c.userId, c.deviceId
 }
 
 func (c *Connection) GetStartTime() time.Time {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
+	c.dataMutex.RLock()
+	defer c.dataMutex.RUnlock()
 
 	return c.startTime
 }
 
 func (c *Connection) Login(userId UserId, deviceId DeviceId) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.dataMutex.Lock()
+	defer c.dataMutex.Unlock()
 
 	c.userId = userId
 	c.deviceId = deviceId
@@ -104,8 +105,8 @@ func (c *Connection) Login(userId UserId, deviceId DeviceId) {
 }
 
 func (c *Connection) UpdateLastPingTime() {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.dataMutex.Lock()
+	defer c.dataMutex.Unlock()
 
 	c.lastMessageAt = time.Now()
 }

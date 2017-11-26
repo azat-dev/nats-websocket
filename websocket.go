@@ -126,8 +126,6 @@ func (w *NatsWebSocket) registerConnection(connection *websocket.Conn) *Connecti
 		return nil
 	})
 
-	w.handleInputMessages(wsConnection)
-
 	return wsConnection
 }
 
@@ -144,6 +142,7 @@ func (w *NatsWebSocket) onConnection(writer http.ResponseWriter, request *http.R
 
 	connection.SetReadLimit(1000)
 	con := w.registerConnection(connection)
+	go w.handleInputMessages(con)
 	w.cleanConnectionsIfNeed(con)
 }
 
