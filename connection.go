@@ -2,7 +2,6 @@ package nats_websocket
 
 import (
 	"github.com/gorilla/websocket"
-	"github.com/mailru/easygo/netpoll"
 	"sync"
 	"time"
 )
@@ -14,7 +13,6 @@ type DeviceId string
 // Connection wraps user connection.
 type Connection struct {
 	ws            *websocket.Conn
-	desc          *netpoll.Desc
 	id            ConnectionId
 	userId        UserId
 	deviceId      DeviceId
@@ -23,10 +21,9 @@ type Connection struct {
 	mutex         sync.RWMutex
 }
 
-func NewConnection(id ConnectionId, ws *websocket.Conn, desc *netpoll.Desc) *Connection {
+func NewConnection(id ConnectionId, ws *websocket.Conn) *Connection {
 	c := &Connection{
 		ws:        ws,
-		desc:      desc,
 		id:        id,
 		userId:    "",
 		deviceId:  "",

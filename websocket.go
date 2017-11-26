@@ -10,7 +10,6 @@ import (
 	"github.com/akaumov/nats-websocket/pb"
 	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
-	"github.com/mailru/easygo/netpoll"
 	"github.com/nats-io/go-nats"
 	"log"
 	"net/http"
@@ -40,10 +39,8 @@ type NatsWebSocket struct {
 
 	httpServer           *http.Server
 	upgrader             websocket.Upgrader
-	poller               netpoll.Poller
 	connections          *ConnectionsStorage
 	lastConnectionNumber int64
-	inputWorkersPool     *Pool
 	packMessage          PackMessageFunc
 }
 
@@ -58,11 +55,10 @@ func NewCustom(config *Config, packMessageHook PackMessageFunc) *NatsWebSocket {
 	}
 
 	return &NatsWebSocket{
-		config:           config,
-		upgrader:         websocket.Upgrader{},
-		connections:      NewConnectionsStorage(),
-		inputWorkersPool: NewPool(config.NumberOfWorkers),
-		packMessage:      packMessageHook,
+		config:      config,
+		upgrader:    websocket.Upgrader{},
+		connections: NewConnectionsStorage(),
+		packMessage: packMessageHook,
 	}
 }
 
@@ -120,11 +116,9 @@ func (w *NatsWebSocket) getNewConnectionId() ConnectionId {
 	return ConnectionId(atomic.AddInt64(&w.lastConnectionNumber, 1))
 }
 
-func (w *NatsWebSocket) registerConnectionInNetPoll(connection *websocket.Conn) *Connection {
+func (w *NatsWebSocket) registerConnection(connection *websocket.Conn) *Connection {
 
-	desc := netpoll.Must(netpoll.HandleRead(connection.UnderlyingConn()))
-
-	wsConnection := NewConnection(w.getNewConnectionId(), connection, desc)
+	wsConnection := NewConnection(w.getNewConnectionId(), connection)
 	w.connections.AddNewConnection(wsConnection)
 
 	connection.SetCloseHandler(func(code int, text string) error {
@@ -132,15 +126,13 @@ func (w *NatsWebSocket) registerConnectionInNetPoll(connection *websocket.Conn) 
 		return nil
 	})
 
-	w.poller.Start(desc, func(event netpoll.Event) {
-		w.inputWorkersPool.Schedule(func() { w.onMessage(wsConnection) })
-	})
+	w.handleInputMessages(wsConnection)
 
 	return wsConnection
 }
 
-func (w *NatsWebSocket) unregisterConnectionFromNetPoll(connection *Connection) {
-	w.poller.Stop(connection.desc)
+func (w *NatsWebSocket) unregisterConnection(connection *Connection) {
+	w.connections.RemoveConnection(connection)
 }
 
 func (w *NatsWebSocket) onConnection(writer http.ResponseWriter, request *http.Request) {
@@ -151,7 +143,7 @@ func (w *NatsWebSocket) onConnection(writer http.ResponseWriter, request *http.R
 	}
 
 	connection.SetReadLimit(1000)
-	con := w.registerConnectionInNetPoll(connection)
+	con := w.registerConnection(connection)
 	w.cleanConnectionsIfNeed(con)
 }
 
@@ -167,33 +159,33 @@ func (w *NatsWebSocket) cleanConnectionsIfNeed(netConnection *Connection) {
 
 		}, func(con *Connection) {
 
-			w.unregisterConnectionFromNetPoll(con)
 			con.Close(websocket.ClosePolicyViolation, "Auth")
 
 		})
 	}
 }
 
-func (w *NatsWebSocket) onMessage(netConnection *Connection) {
+func (w *NatsWebSocket) handleInputMessages(netConnection *Connection) {
 
-	messageType, message, err := netConnection.ReadMessage()
-	if err != nil {
-		w.poller.Stop(netConnection.desc)
-		netConnection.Close(websocket.CloseInternalServerErr, "ServerError")
-		w.onClose(netConnection)
-		return
-	}
+	for {
+		messageType, message, err := netConnection.ReadMessage()
+		if err != nil {
+			netConnection.Close(websocket.CloseInternalServerErr, "ServerError")
+			w.onClose(netConnection)
+			return
+		}
 
-	netConnection.UpdateLastPingTime()
+		netConnection.UpdateLastPingTime()
 
-	switch messageType {
-	case websocket.TextMessage:
-		w.onTextMessage(netConnection, message)
-	case websocket.BinaryMessage:
-		w.onBinaryMessage(netConnection, message)
-	case websocket.CloseMessage:
-		w.onClose(netConnection)
-		return
+		switch messageType {
+		case websocket.TextMessage:
+			w.onTextMessage(netConnection, message)
+		case websocket.BinaryMessage:
+			w.onBinaryMessage(netConnection, message)
+		case websocket.CloseMessage:
+			w.onClose(netConnection)
+			return
+		}
 	}
 }
 
@@ -248,8 +240,7 @@ func (w *NatsWebSocket) onClose(connection *Connection) {
 		return
 	}
 
-	w.unregisterConnectionFromNetPoll(connection)
-	w.connections.RemoveConnection(connection)
+	w.unregisterConnection(connection)
 }
 
 func (w *NatsWebSocket) login(connection *Connection, tokenString []byte) {
@@ -288,7 +279,7 @@ func (w *NatsWebSocket) login(connection *Connection, tokenString []byte) {
 	deviceConnectionBefore := w.connections.OnLogin(connection)
 	if deviceConnectionBefore != nil {
 		deviceConnectionBefore.Close(websocket.CloseGoingAway, "OneConnectionPerDevice")
-		w.unregisterConnectionFromNetPoll(deviceConnectionBefore)
+		w.unregisterConnection(deviceConnectionBefore)
 	}
 
 	connection.SendText([]byte(LOGIN_PREFIX + "ok"))
@@ -457,14 +448,6 @@ func getOsSignalWatcher() chan os.Signal {
 func (w *NatsWebSocket) Start() {
 
 	stopSignal := getOsSignalWatcher()
-
-	poller, err := netpoll.New(nil)
-	if err != nil {
-		log.Panicf("Can't start poller")
-		return
-	}
-
-	w.poller = poller
 
 	natsPool, err := nats_pool.New(w.config.NatsAddress, w.config.NatsPoolSize)
 	if err != nil {

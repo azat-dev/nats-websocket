@@ -14,8 +14,8 @@ func TestCountOfNotLoggedConnections(t *T) {
 	assert.Equal(t, 0, stats.NumberOfUsers)
 	assert.Equal(t, 0, stats.NumberOfDevices)
 
-	con1 := NewConnection(ConnectionId(1), nil, nil)
-	con2 := NewConnection(ConnectionId(2), nil, nil)
+	con1 := NewConnection(ConnectionId(1), nil)
+	con2 := NewConnection(ConnectionId(2), nil)
 
 	//add two connects and remove them
 	storage.AddNewConnection(con1)
@@ -63,10 +63,10 @@ func TestLogin(t *T) {
 	assert.Equal(t, 0, stats.NumberOfUsers)
 	assert.Equal(t, 0, stats.NumberOfDevices)
 
-	con1 := NewConnection(ConnectionId(1), nil, nil)
-	con2 := NewConnection(ConnectionId(2), nil, nil)
-	con3 := NewConnection(ConnectionId(3), nil, nil)
-	con4 := NewConnection(ConnectionId(4), nil, nil)
+	con1 := NewConnection(ConnectionId(1), nil)
+	con2 := NewConnection(ConnectionId(2), nil)
+	con3 := NewConnection(ConnectionId(3), nil)
+	con4 := NewConnection(ConnectionId(4), nil)
 
 	assert.Equal(t, 0, storage.numberOfNotLoggedConnections)
 
@@ -148,9 +148,9 @@ func TestRetriveConnections(t *T) {
 
 	storage := NewConnectionsStorage()
 
-	con1 := NewConnection(ConnectionId(1), nil, nil)
-	con2 := NewConnection(ConnectionId(2), nil, nil)
-	con3 := NewConnection(ConnectionId(3), nil, nil)
+	con1 := NewConnection(ConnectionId(1), nil)
+	con2 := NewConnection(ConnectionId(2), nil)
+	con3 := NewConnection(ConnectionId(3), nil)
 
 	storage.AddNewConnection(con1)
 	storage.AddNewConnection(con2)
