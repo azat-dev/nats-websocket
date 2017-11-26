@@ -21,7 +21,7 @@ import (
 const (
 	LISTEN_INTERFACE    = "localhost:8080"
 	JWT_SECRET          = "123456"
-	NATS_ADDRESS        = "nats://localhost:4222"
+	NATS_ADDRESS        = "nats://localhost:32770"
 	NATS_POOL_SIZE      = 200
 	NATS_OUTPUT_SUBJECT = "nats-websocket-received"
 	NATS_LISTEN_SUBJECT = "nats-websocket-send"
@@ -47,12 +47,10 @@ func startWsServer(packetFormat string) *NatsWebSocket {
 	natsWebsocket := New(&Config{
 		ListenInterface:   LISTEN_INTERFACE,
 		JwtSecret:         JWT_SECRET,
-		Timeout:           30000,
 		UrlPattern:        "/",
 		NatsAddress:       NATS_ADDRESS,
 		NatsPoolSize:      NATS_POOL_SIZE,
 		PacketFormat:      packetFormat,
-		NumberOfWorkers:   20,
 		NatsOutputSubject: NATS_OUTPUT_SUBJECT,
 		NatsListenSubject: NATS_LISTEN_SUBJECT,
 	})
